@@ -13,6 +13,10 @@
 #include "web.h"
 #include "zbs_interface.h"
 
+#ifndef FLASH_TIMEOUT
+#define FLASH_TIMEOUT 30
+#endif
+
 QueueHandle_t rxCmdQueue;
 SemaphoreHandle_t txActive;
 
@@ -660,7 +664,7 @@ void APTask(void* parameter) {
             Serial.printf("Firmware version on LittleFS: %04X\n", fsversion);
 
             Serial.printf("We're going to try to update the AP's FW in\n");
-            flashCountDown(30);
+            flashCountDown(FLASH_TIMEOUT);
             Serial.printf("\n");
             notifySegmentedFlash();
             apInfo.isOnline = false;
@@ -691,9 +695,6 @@ void APTask(void* parameter) {
         }
         refreshAllPending();
     } else {
-#ifndef FLASH_TIMEOUT
-#define FLASH_TIMEOUT 30
-#endif
 
         // AP unavailable, maybe time to flash?
         apInfo.isOnline = false;

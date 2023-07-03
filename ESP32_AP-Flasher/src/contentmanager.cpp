@@ -54,6 +54,7 @@ enum contentModes {
     Calendar,
     RemoteAP,
     SegStatic,
+    Graph = 99,
 };
 
 struct HwType {
@@ -300,6 +301,23 @@ void drawNew(uint8_t mac[8], bool buttonPressed, tagRecord *&taginfo) {
             taginfo->nextupdate = 3216153600;
             taginfo->contentMode = Image;
             break;
+
+        case Graph:
+            // Fake sample buffer
+            // Ensure we have different scaling each time for testing
+            uint32_t sample_count = esp_random() % 400;
+            uint32_t max_sample = ((uint32_t)esp_random()) % 20000;
+            if(max_sample < 4000)
+                max_sample = 4000;
+            uint32_t data[sample_count] = {};
+
+            for (int sample = 0; sample < sample_count; sample++) {
+                data[sample] = ((uint32_t)esp_random()) % max_sample; 
+            }
+            drawGraph(filename, taginfo, imageParams, 20, data, sample_count);
+            taginfo->nextupdate = now + 30;
+            updateTagImage(filename, mac, (midnight - now) / 60 - 10, taginfo, imageParams);
+            break;
     }
 
     taginfo->modeConfigJson = doc.as<String>();
@@ -383,6 +401,101 @@ void drawDate(String &filename, tagRecord *&taginfo, imgParam &imageParams) {
         drawString(spr, String(languageMonth[getCurrentLanguage()][timeinfo.tm_mon]), loc["month"][0], loc["month"][1], loc["month"][2], TC_DATUM);
         drawString(spr, String(timeinfo.tm_mday), loc["day"][0], loc["day"][1], loc["day"][2], TC_DATUM, PAL_RED);
     }
+
+    spr2buffer(spr, filename, imageParams);
+    spr.deleteSprite();
+}
+
+// Will only the last taginfo->width data points as we are not averaging sample data
+void drawGraph(String &filename, tagRecord *&taginfo, imgParam &imageParams, uint32_t sampleMaximumValue, uint32_t *data, uint32_t sample_count) {
+
+    TFT_eSPI tft = TFT_eSPI();
+    TFT_eSprite spr = TFT_eSprite(&tft);
+
+    DynamicJsonDocument loc(1000);
+    getTemplate(loc, TEMPLATE, 1, hwdata[taginfo->hwType].basetype);
+
+    int width = hwdata[taginfo->hwType].width;
+    int height =  hwdata[taginfo->hwType].height;
+    initSprite(spr, width, height, imageParams);
+
+    spr.fillScreen(PAL_WHITE);
+
+    uint32_t actual_sample_maximum = sampleMaximumValue;
+
+    uint32_t data_offset = sample_count > width ? sample_count - width : 0;
+    if (data_offset != 0) 
+        sample_count = sample_count - data_offset;
+    for (int sample = 0; sample < sample_count; sample++) {
+        actual_sample_maximum = data[sample + data_offset] > actual_sample_maximum ? 
+                        data[sample + data_offset] : actual_sample_maximum;
+    }
+
+    uint32_t scaling_factor = actual_sample_maximum / height;
+
+    if (!scaling_factor)
+        scaling_factor = 1;
+
+    uint32_t sample_width = width;
+    uint32_t graph_width = width;
+    if(sample_count > 3) {
+        sample_width = width / (sample_count - 2);
+        // Adjust graph width for rounded down integer sample_widths
+        graph_width = sample_width * (sample_count - 1);
+    }
+    uint32_t x_margin = (width - graph_width) / 2;
+
+    // Dotted Background grid
+    for (int x = 0; x < width / 16; x+=16) {
+        for (int y = 0; y < height / 16; y+=16) {
+            spr.drawPixel(x, y, PAL_BLACK);
+        }
+    }
+
+    spr.setTextColor(PAL_BLACK, PAL_WHITE);
+
+    // Draw graph lines first so text prints over them
+    // Left vertical line
+    spr.drawLine(x_margin, 0, x_margin, height, PAL_BLACK);
+    spr.drawLine(x_margin + graph_width, 0, x_margin + graph_width, height, PAL_BLACK);
+
+    // Bottom horizonal line
+    spr.drawLine(x_margin, height - 1, x_margin + graph_width, height - 1, PAL_BLACK);
+
+    // Draw graph data
+    uint32_t graphMax = height - 1;  // Dont draw to close to the border. ever.
+    uint32_t last_data = data[data_offset];
+    for (int sample = 1; sample < sample_count; sample++) {
+        spr.drawLine(
+            x_margin + ((sample - 1) * sample_width), // x0
+            graphMax - (last_data / scaling_factor), // y0
+            x_margin + (sample*sample_width), // x1
+            graphMax - (data[sample + data_offset] / scaling_factor), // y1
+            PAL_RED);
+        last_data = data[sample + data_offset];
+    }
+
+    spr.setCursor(x_margin + 5, height - 8);
+    spr.print("0,0");
+
+    // Graph labels vertical
+    spr.setCursor(x_margin + 5, 0);
+    spr.print(String(actual_sample_maximum));
+    spr.setCursor(x_margin + 5, height / 2);
+    spr.print(String(actual_sample_maximum / 2));
+
+    // Graph labels horizontal
+    spr.setCursor(x_margin + (graph_width / 2), height - 8);
+    spr.print(String(sample_count / 2));
+    if(sample_count > 100)
+        spr.setCursor(x_margin + (graph_width - 20), height - 8);
+    else
+        spr.setCursor(x_margin + (graph_width - 13), height - 8);
+    spr.print(String(sample_count));
+
+    //Draw graph lines
+    drawString(spr, "Random Data", width / 2, 5,"fonts/bahnschrift20",
+        TC_DATUM, PAL_BLACK);
 
     spr2buffer(spr, filename, imageParams);
     spr.deleteSprite();
