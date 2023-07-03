@@ -54,6 +54,7 @@ enum contentModes {
     Calendar,
     RemoteAP,
     SegStatic,
+    Graph = 99,
 };
 
 struct HwType {
@@ -300,6 +301,12 @@ void drawNew(uint8_t mac[8], bool buttonPressed, tagRecord *&taginfo) {
             taginfo->nextupdate = 3216153600;
             taginfo->contentMode = Image;
             break;
+
+        case Graph:
+            drawGraph(filename, taginfo, imageParams);
+            taginfo->nextupdate = now + 30;
+            updateTagImage(filename, mac, (midnight - now) / 60 - 10, taginfo, imageParams);
+            break;
     }
 
     taginfo->modeConfigJson = doc.as<String>();
@@ -382,6 +389,104 @@ void drawDate(String &filename, tagRecord *&taginfo, imgParam &imageParams) {
         drawString(spr, languageDays[getCurrentLanguage()][timeinfo.tm_wday], loc["weekday"][0], loc["weekday"][1], loc["weekday"][2], TC_DATUM, PAL_BLACK);
         drawString(spr, String(languageMonth[getCurrentLanguage()][timeinfo.tm_mon]), loc["month"][0], loc["month"][1], loc["month"][2], TC_DATUM);
         drawString(spr, String(timeinfo.tm_mday), loc["day"][0], loc["day"][1], loc["day"][2], TC_DATUM, PAL_RED);
+    }
+
+    spr2buffer(spr, filename, imageParams);
+    spr.deleteSprite();
+}
+
+void drawGraph(String &filename, tagRecord *&taginfo, imgParam &imageParams) {
+
+    TFT_eSPI tft = TFT_eSPI();
+    TFT_eSprite spr = TFT_eSprite(&tft);
+
+    DynamicJsonDocument loc(1000);
+    getTemplate(loc, TEMPLATE, 1, hwdata[taginfo->hwType].basetype);
+
+    int width = hwdata[taginfo->hwType].width;
+    int height =  hwdata[taginfo->hwType].height;
+    initSprite(spr, width, height, imageParams);
+
+    spr.fillScreen(PAL_WHITE);
+
+    // Fake sample buffer
+    // Ensure we have different scaling each time for testing
+    uint32_t sample_count = 24;
+    uint32_t max_sample = ((uint32_t)esp_random()) % 20000;
+    uint32_t data[sample_count] = {};
+
+    for (int sample = 0; sample < sample_count; sample++) {
+        data[sample] = ((uint32_t)esp_random()) % max_sample; 
+    }
+
+    // This could be configurable
+    uint32_t actual_sample_maximum = 10000;
+    for (int sample = 0; sample < sample_count; sample++) {
+        actual_sample_maximum = data[sample] > actual_sample_maximum ? 
+                        data[sample] : actual_sample_maximum;
+    }
+
+    uint32_t scaling_factor = actual_sample_maximum / height;
+
+    if (!scaling_factor)
+        scaling_factor = 1;
+
+
+    //Draw graph lines
+    drawString(spr, "Random Data", width / 2, 0,"fonts/bahnschrift20",
+        TC_DATUM, PAL_BLACK);
+
+    // Dotted Background grid
+    for (int x = 0; x < width / 16; x+=16) {
+        for (int y = 0; y < height / 16; y+=16) {
+            spr.drawPixel(x, y, PAL_BLACK);
+        }
+    }
+
+    spr.setTextColor(PAL_BLACK, PAL_WHITE);
+
+    // Draw graph lines first so text prints over them
+    // Left vertical line
+    spr.drawLine(0, 0, 0, height, PAL_BLACK);
+    // Bottom horizonal line
+    spr.drawLine(0, height - 1, width, height - 1, PAL_BLACK);
+
+    spr.setCursor(5, height - 8);
+    spr.print("0,0");
+
+    // Graph labels vertical
+    spr.setCursor(5, 0);
+    spr.print(String(actual_sample_maximum));
+    spr.setCursor(5, height / 2);
+    spr.print(String(actual_sample_maximum / 2));
+
+    // Graph labels horizontal
+    spr.setCursor(width / 2, height - 8);
+    spr.print(String(sample_count / 2));
+    if(sample_count > 100)
+        spr.setCursor(width - 20, height - 8);
+    else
+        spr.setCursor(width - 13, height - 8);
+    spr.print(String(sample_count));
+
+    uint32_t last_data = data[0];
+    uint32_t sample_width = width;
+    if(sample_count >= 2) {
+        sample_width = width / (sample_count - 2);
+
+    }
+
+    uint32_t graphMax = height - 1;  // Dont draw to close to the border. ever.
+
+    for (int sample = 1; sample < sample_count; sample++) {
+
+        spr.drawLine( 
+            (sample-1)*sample_width, // x0
+            graphMax - (last_data / scaling_factor), // y0
+            sample*sample_width, // x1
+            graphMax - (data[sample] / scaling_factor), // y1
+            PAL_RED);
+        last_data = data[sample];
     }
 
     spr2buffer(spr, filename, imageParams);

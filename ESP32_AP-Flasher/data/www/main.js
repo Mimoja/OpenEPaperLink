@@ -258,7 +258,13 @@ function processTags(tagArray) {
 		(function (tagmac) {
 			setTimeout(function () { $('#tag' + tagmac).classList.remove("tagflash"); }, 1400);
 		})(tagmac);
-		if (element.pending) div.classList.add("tagpending");
+		if (element.pending){ 
+			div.classList.add("tagpending");
+			if (div.dataset.hash == "00000000000000000000000000000000" && div.dataset.hwtype > -1 && (element.isexternal == false || element.contentMode != 12)) {
+				loadImage(tagmac, '/current/' + tagmac + '.pending?' + (new Date()).getTime());
+				div.dataset.hash = "PENDING0000000000000000000000000";
+			}
+		}
 	}
 }
 

@@ -533,5 +533,18 @@
         }
       }
     ]
+  },
+  {
+    "id": 99,
+    "name": "Random Graph",
+    "desc": "Shows SOME data",
+    "hwtype": [
+      0,
+      1,
+      2,
+      17,
+      240
+    ],
+    "param": []
   }
 ]
