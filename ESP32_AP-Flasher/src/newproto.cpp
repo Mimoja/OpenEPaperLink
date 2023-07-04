@@ -437,6 +437,7 @@ void processXferTimeout(struct espXferComplete* xfc, bool local) {
 void processDataReq(struct espAvailDataReq* eadr, bool local) {
     if (config.runStatus == RUNSTATUS_STOP) return;
     char buffer[64];
+    bool tempHasChanged = false;
 
     tagRecord* taginfo = nullptr;
     taginfo = tagRecord::findByMAC(eadr->src);
@@ -470,6 +471,7 @@ void processDataReq(struct espAvailDataReq* eadr, bool local) {
         taginfo->expectedNextCheckin = now + 60 * taginfo->pendingIdle;
         taginfo->pendingIdle = 0;
     }
+    tempHasChanged = tempHasChanged || (now - taginfo->lastseen > 360);
     taginfo->lastseen = now;
 
     if (eadr->adr.lastPacketRSSI != 0) {
@@ -493,6 +495,7 @@ void processDataReq(struct espAvailDataReq* eadr, bool local) {
         taginfo->LQI = eadr->adr.lastPacketLQI;
         taginfo->hwType = eadr->adr.hwType;
         taginfo->RSSI = eadr->adr.lastPacketRSSI;
+        tempHasChanged = tempHasChanged || (taginfo->temperature != eadr->adr.temperature);
         taginfo->temperature = eadr->adr.temperature;
         taginfo->batteryMv = eadr->adr.batteryMv;
         taginfo->hwType = eadr->adr.hwType;
@@ -511,6 +514,26 @@ void processDataReq(struct espAvailDataReq* eadr, bool local) {
     wsSendTaginfo(eadr->src, SYNC_TAGSTATUS);
     if (local) {
         udpsync.netProcessDataReq(eadr);
+
+#ifdef CREATE_TEMPERATURE_HISTORY
+        if (taginfo->temperature && tempHasChanged) {
+            char timeStr[64];
+
+            String filename = "/temperatures/" + String(hexmac) +".txt";
+            File tempFile = contentFS->open(filename, "a");
+            if (tempFile) {
+                Serial.print("Saving temperature for ");
+                Serial.println(String(hexmac));
+
+                strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M,", localtime(&now));
+                tempFile.print(timeStr);
+                tempFile.println(taginfo->temperature);
+                tempFile.close();
+            } else {
+                Serial.println("Failed to open " + filename);
+            }
+        }
+#endif
     }
 }
 

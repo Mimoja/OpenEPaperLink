@@ -139,6 +139,11 @@ void DynStorage::begin() {
     if (!contentFS->exists("/temp")) {
         contentFS->mkdir("/temp");
     }
+#ifdef CREATE_TEMPERATURE_HISTORY
+    if (!contentFS->exists("/temperatures")) {
+        contentFS->mkdir("/temperatures");
+    }
+#endif
 }
 
 void DynStorage::end() {

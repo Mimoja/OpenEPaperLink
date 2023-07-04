@@ -268,6 +268,7 @@ void init_web() {
     });
 
     server.serveStatic("/current", *contentFS, "/current/");
+    server.serveStatic("/temperatures", *contentFS, "/temperatures/");
     server.serveStatic("/", *contentFS, "/www/").setDefaultFile("index.html");
 
     server.on(
