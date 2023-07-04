@@ -572,7 +572,7 @@ void checkWaitPowerCycle() {
 #endif
 }
 void segmentedShowIp() {
-    IPAddress IP = WiFi.localIP();
+    IPAddress IP = get_local_IP();
     char temp[12];
     vTaskDelay(2000 / portTICK_PERIOD_MS);
     sendAPSegmentedData(apInfo.mac, (String) "IP    Addr", 0x0200, true, true);
