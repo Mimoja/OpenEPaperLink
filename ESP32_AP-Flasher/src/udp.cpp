@@ -32,7 +32,7 @@ UDPcomm::~UDPcomm() {
 void UDPcomm::init() {
     if (udp.listenMulticast(UDPIP, UDPPORT)) {
         udp.onPacket([this](AsyncUDPPacket packet) {
-            if (packet.remoteIP() != WiFi.localIP()) {
+            if (packet.remoteIP() != get_local_IP()) {
                 this->processPacket(packet);
             }
         });
@@ -77,7 +77,7 @@ void UDPcomm::processPacket(AsyncUDPPacket packet) {
             IPAddress senderIP = packet.remoteIP();
 
             APlist APitem;
-            APitem.src = WiFi.localIP();
+            APitem.src = get_local_IP();
             strcpy(APitem.alias, config.alias);
             APitem.channelId = curChannel.channel;
             APitem.tagCount = getTagCount();
@@ -143,7 +143,7 @@ void autoselect(void* pvParameters) {
 
 void UDPcomm::getAPList() {
     APlist APitem;
-    APitem.src = WiFi.localIP();
+    APitem.src = get_local_IP();
     strcpy(APitem.alias, config.alias);
     APitem.channelId = curChannel.channel;
     APitem.tagCount = getTagCount();

@@ -5,6 +5,7 @@
 
 void init_web();
 void doImageUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+IPAddress get_local_IP();
 
 extern void webSocketSendProcess(void *parameter);
 void wsLog(String text);

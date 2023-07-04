@@ -10,7 +10,13 @@
 #include "LittleFS.h"
 #include "SPIFFSEditor.h"
 #include <WiFi.h>
+
+#ifdef HAS_ETHERNET
+#include "ETH.h"
+wl_status_t eth_status = WL_NO_SHIELD;
+#else
 #include <WiFiManager.h>  // https://github.com/tzapu/WiFiManager/tree/feature_asyncwebserver
+#endif
 
 #include "commstructs.h"
 #include "language.h"
@@ -150,9 +156,15 @@ void wsSendSysteminfo() {
     sys["apstate"] = apInfo.state;
     sys["runstate"] = config.runStatus;
     sys["temp"] = temperatureRead();
+#ifdef HAS_ETHERNET
+    sys["ethstatus"] = eth_status;
+    sys["hostname"] = ETH.getHostname();
+#else
+    sys["hostname"] = WiFi.getHostname();
     sys["rssi"] = WiFi.RSSI();
     sys["wifistatus"] = WiFi.status();
     sys["wifissid"] = WiFi.SSID();
+#endif //!HAS_ETHERNET
 
     xSemaphoreTake(wsMutex, portMAX_DELAY);
     ws.textAll(doc.as<String>());
@@ -229,8 +241,76 @@ uint8_t wsClientCount() {
     return ws.count();
 }
 
+#ifdef HAS_ETHERNET
+
+void EthEventHandler(WiFiEvent_t event)
+{
+  switch (event) {
+    case ARDUINO_EVENT_ETH_START:
+        Serial.println("ETH Started");
+        //set eth hostname here
+        ETH.setHostname("openepaperlink-ethernet");
+        eth_status = WL_IDLE_STATUS;
+        break;
+    case ARDUINO_EVENT_ETH_CONNECTED:
+        Serial.println("ETH Connected");
+        eth_status = WL_CONNECTION_LOST;
+        break;
+    case ARDUINO_EVENT_ETH_GOT_IP:
+        Serial.print("ETH MAC: ");
+        Serial.print(ETH.macAddress());
+        Serial.print(", IPv4: ");
+        Serial.print(ETH.localIP());
+        // No need to print buncha zeros
+        if (!(ETH.localIPv6() == IPv6Address())) {
+            Serial.print(", IPv6: ");
+            Serial.print(ETH.localIPv6());
+        }
+        if (ETH.fullDuplex()) {
+            Serial.print(", FULL_DUPLEX");
+        }
+        Serial.print(", ");
+        Serial.print(ETH.linkSpeed());
+        Serial.println("Mbps");
+        eth_status = WL_CONNECTED;
+        break;
+    case ARDUINO_EVENT_ETH_DISCONNECTED:
+        Serial.println("ETH Disconnected");
+        eth_status = WL_DISCONNECTED;
+        break;
+    case ARDUINO_EVENT_ETH_STOP:
+        Serial.println("ETH Stopped");
+        eth_status = WL_DISCONNECTED;
+        break;
+    default:
+        break;
+  }
+}
+#endif
+
+IPAddress get_local_IP() {
+#ifdef HAS_ETHERNET
+    return ETH.localIP();
+#endif
+    return WiFi.localIP();
+}
+
 void init_web() {
     Storage.begin();
+#ifdef HAS_ETHERNET
+    WiFi.onEvent(EthEventHandler);
+    ETH.begin();
+    ETH.enableIpV6();
+    int counter = 0;
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    while (eth_status != WL_CONNECTED) {
+        Serial.printf("\rWaiting for Ethernet %d  ", counter);
+        counter++;
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    if (counter != 0)
+        Serial.println();
+#else
     WiFi.mode(WIFI_STA);
 
     WiFiManager wm;
@@ -247,8 +327,10 @@ void init_web() {
 #if defined(OPENEPAPERLINK_MINI_AP_PCB) || defined(OPENEPAPERLINK_NANO_AP_PCB)
     WiFi.setTxPower(WIFI_POWER_19_5dBm);
 #endif
+#endif // !HAS_ETHERNET
+
     Serial.print("Connected! IP address: ");
-    Serial.println(WiFi.localIP());
+    Serial.println(get_local_IP());
 
     // server.addHandler(new SPIFFSEditor(*contentFS, http_username, http_password));
     server.addHandler(new SPIFFSEditor(*contentFS));
