@@ -9,36 +9,41 @@ SPIFFSEditor::SPIFFSEditor(const fs::FS &fs, const String &username, const Strin
 }
 
 bool SPIFFSEditor::canHandle(AsyncWebServerRequest *request) {
-    if (request->url().equalsIgnoreCase("/edit")) {
-        if (request->method() == HTTP_GET) {
-            if (request->hasParam("list")) {
-                return true;
-            }
-            if (request->hasParam("edit")) {
-                request->_tempFile = _fs.open("/" + request->arg("edit"), "r");
-                if (!request->_tempFile) {
-                    return false;
-                }
-                if (request->_tempFile.isDirectory()) {
-                    request->_tempFile.close();
-                    return false;
-                }
-            }
-            if (request->hasParam("download")) {
-                request->_tempFile = _fs.open("/" + request->arg("download"), "r");
-                if (!request->_tempFile) {
-                    return false;
-                }
-                if (request->_tempFile.isDirectory()) {
-                    request->_tempFile.close();
-                    return false;
-                }
-            }
-            request->addInterestingHeader("If-Modified-Since");
-            return true;
-        } else if (request->method() == HTTP_POST || request->method() == HTTP_DELETE || request->method() == HTTP_PUT) {
+    if (!request->url().equalsIgnoreCase("/edit")) {
+        return false;
+    }
+    if (request->method() == HTTP_POST || request->method() == HTTP_DELETE || request->method() == HTTP_PUT) {
+        return true;
+    }
+    // We are a bit more picky with our quest requests
+    if (request->method() == HTTP_GET) {
+        if (request->hasParam("list")) {
             return true;
         }
+
+        if (request->hasParam("edit")) {
+            request->_tempFile = _fs.open("/" + request->arg("edit"), "r");
+            if (!request->_tempFile) {
+                return false;
+            }
+            if (request->_tempFile.isDirectory()) {
+                request->_tempFile.close();
+                return false;
+            }
+        }
+
+        if (request->hasParam("download")) {
+            request->_tempFile = _fs.open("/" + request->arg("download"), "r");
+            if (!request->_tempFile) {
+                return false;
+            }
+            if (request->_tempFile.isDirectory()) {
+                request->_tempFile.close();
+                return false;
+            }
+        }
+        request->addInterestingHeader("If-Modified-Since");
+        return true;
     }
     return false;
 }
@@ -89,6 +94,11 @@ void SPIFFSEditor::handleRequest(AsyncWebServerRequest *request) {
             request->send(404);
         }
     } else if (request->method() == HTTP_POST) {
+        if (!request->hasParam("data", true, true)) {
+            request->send(400);
+            return;
+        }
+
         String filename = request->getParam("data", true, true)->value();
         if (filename.c_str()[0] != '/') {
             filename = "/" + filename;
@@ -99,26 +109,26 @@ void SPIFFSEditor::handleRequest(AsyncWebServerRequest *request) {
             request->send(500);
         }
     } else if (request->method() == HTTP_PUT) {
-        if (request->hasParam("path", true)) {
-            String filename = request->getParam("path", true)->value();
-            if (_fs.exists(filename)) {
-                request->send(200);
-            } else {
-                if (filename.c_str()[0] != '/') {
-                    filename = "/" + filename;
-                }
-                fs::File f = _fs.open(filename, "w");
-                if (f) {
-                    f.write((uint8_t)0x00);
-                    f.close();
-                    request->send(200, "", "CREATE: " + filename);
-                } else {
-                    request->send(500);
-                }
-            }
-        } else {
+        if (!request->hasParam("path", true)) {
             request->send(400);
+            return;
         }
+        String filename = request->getParam("path", true)->value();
+        if (_fs.exists(filename)) {
+            request->send(200);
+            return;
+        }
+        if (filename.c_str()[0] != '/') {
+            filename = "/" + filename;
+        }
+        fs::File f = _fs.open(filename, "w");
+        if (!f) {
+            request->send(500);
+            return;
+        }
+        f.write((uint8_t)0x00);
+        f.close();
+        request->send(200, "", "CREATE: " + filename);
     }
 }
 
